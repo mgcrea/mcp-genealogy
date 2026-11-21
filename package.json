@@ -1,6 +1,6 @@
 {
   "name": "@mgcrea/mcp-genealogy",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Model Context Protocol server for genealogy records: search Geneanet's trees and archive indexes, read persons and pedigrees",
   "keywords": [
     "genealogy",
