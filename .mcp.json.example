@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "geneanet": {
+      "command": "node",
+      "args": ["/absolute/path/to/mcp-geneanet/dist/cli.js"],
+      "env": {
+        "GENEANET_TREE": ""
+      }
+    }
+  }
+}
