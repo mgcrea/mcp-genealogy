@@ -1,3 +1,6 @@
+import { homedir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
+
 import { z } from "zod";
 
 // No credentials and no write flag, on purpose:
@@ -26,11 +29,13 @@ const ConfigSchema = z
     maxRetries: z.number().int().default(2),
     /** Per-request deadline. */
     timeoutMs: z.number().int().default(20_000),
+    /** The one folder genealogy_export_gedcom writes to; nothing else is ever written. */
+    exportDir: z.string().min(1),
   })
   .strict();
 
 export type Config = z.infer<typeof ConfigSchema> & {
-  /** Settings that were out of range and got clamped, for geneanet_auth_status. */
+  /** Settings that were out of range and got clamped, for genealogy_status. */
   adjusted: string[];
 };
 
@@ -48,6 +53,13 @@ const trimmed = (value: string | undefined): string | undefined => {
 
 /** A tree name is the first path segment of its URL: gw.geneanet.org/<tree>. */
 export const TREE_NAME = /^[a-z0-9][a-z0-9_.-]*$/i;
+
+const DEFAULT_EXPORT_DIR = (): string =>
+  join(homedir(), "Library", "Application Support", "mcp-genealogy", "exports");
+
+/** `~` and `~/…` expand to the home folder; any other path must be absolute. */
+const expandHome = (path: string): string =>
+  path === "~" || path.startsWith("~/") ? join(homedir(), path.slice(1)) : path;
 
 /**
  * Environment only: the server persists nothing of its own. A malformed value
@@ -85,6 +97,20 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => {
     tree = undefined;
   }
 
+  let exportDir = trimmed(env.GENEALOGY_EXPORT_DIR);
+  if (exportDir !== undefined) {
+    const expanded = expandHome(exportDir);
+    if (isAbsolute(expanded)) {
+      exportDir = resolve(expanded);
+    } else {
+      // A server's working directory is whatever the client launched it in: never a base to guess.
+      adjusted.push(
+        `GENEALOGY_EXPORT_DIR=${exportDir} is not an absolute path (or ~/...); using the default.`,
+      );
+      exportDir = undefined;
+    }
+  }
+
   const parsed = ConfigSchema.parse({
     treeBaseUrl: url("GENEANET_TREE_API_URL"),
     siteBaseUrl: url("GENEANET_SITE_URL"),
@@ -95,6 +121,7 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): Config => {
     minIntervalMs: intSetting("GENEANET_MIN_INTERVAL_MS", 500, 60_000),
     maxRetries: intSetting("GENEANET_MAX_RETRIES", 0, 5),
     timeoutMs: intSetting("GENEANET_TIMEOUT_MS", 5_000, 120_000),
+    exportDir: exportDir ?? DEFAULT_EXPORT_DIR(),
   });
   return { ...parsed, adjusted };
 };

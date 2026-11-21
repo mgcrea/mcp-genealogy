@@ -6,7 +6,7 @@ import {
   ProtoWriter,
   frameRequest,
   unframeResponse,
-} from "#/proto/wire";
+} from "#/sources/geneanet/proto/wire";
 
 describe("ProtoWriter / ProtoMessage", () => {
   it("round-trips varints, strings and nested messages", () => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the mcp-geneanet Docker image, baking in real git commit info via
+# Build the mcp-genealogy Docker image, baking in real git commit info via
 # build args (the .git dir isn't COPY'd into the build context, so tsdown
 # can't resolve it from inside the builder stage).
 #
@@ -14,7 +14,7 @@ cd "$ROOT"
 VERSION=$(node -p "require('./package.json').version")
 GIT_COMMIT=$(git rev-parse --short HEAD)
 GIT_COMMIT_DATE=$(git log -1 --format=%cI)
-IMAGE="mgcrea/mcp-geneanet"
+IMAGE="mgcrea/mcp-genealogy"
 
 case "${BUILDER:-build}" in
   build)  cmd=(docker build) ;;

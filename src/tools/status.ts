@@ -1,9 +1,9 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
-import type { GeneanetClient } from "#/client/geneanet";
-import { encodeSearchRequest } from "#/proto/messages";
-import { buildRecordsQuery, parseRecordsPage } from "#/records/search";
+import type { GeneanetClient } from "#/sources/geneanet/geneanet";
+import { encodeSearchRequest } from "#/sources/geneanet/proto/messages";
+import { buildRecordsQuery, parseRecordsPage } from "#/sources/geneanet/records";
 import type { ToolContext } from "#/tools/index";
 import { wrap } from "#/tools/util";
 
@@ -17,9 +17,10 @@ const probe = async (fn: () => Promise<string>): Promise<string> => {
 };
 
 /**
- * Named like the fleet's `<prefix>_auth_status` so it is the first thing a
- * model reaches for when something is off, though there is no auth here: every
- * route is public. What can break is the route itself, so `check` probes both.
+ * One status tool for every source, so it is the first thing a model reaches
+ * for when something is off. There is no auth: every route read is public.
+ * What can break is a route itself, so `check` probes each source's routes.
+ * Settings sit under `sources.<name>`; clamped settings are server-wide.
  */
 export const registerStatusTools = (
   server: McpServer,
@@ -27,20 +28,22 @@ export const registerStatusTools = (
   ctx: ToolContext,
 ): void => {
   server.registerTool(
-    "geneanet_auth_status",
+    "genealogy_status",
     {
-      title: "Geneanet: Status",
+      title: "Genealogy: Status",
       description:
-        "Report the server's settings (default tree, request pacing) and, with check: true, " +
-        "whether Geneanet still answers both routes this server uses. No credentials are ever " +
+        "Report each source's settings and, with check: true, whether each source still answers. " +
+        "Geneanet: settings are the default tree and request pacing; the check probes the " +
+        "site-wide search and, when GENEANET_TREE is set, the tree API. No credentials are ever " +
         "needed: everything read is public. Call this when a tool fails with a Cloudflare or " +
-        "markup error, to tell a site change from a one-off.",
+        "markup error, to tell a site change from a one-off. Also gives exportDir, the folder " +
+        "genealogy_export_gedcom writes to.",
       inputSchema: z.object({
         check: z
           .boolean()
           .default(false)
           .describe(
-            "Also probe Geneanet: one site-wide search, plus one tree search when GENEANET_TREE is set. Two requests, about two seconds.",
+            "Also probe each source, one request per check. Geneanet: a site-wide search, plus a tree search when GENEANET_TREE is set (one or two requests, a second apart).",
           ),
       }),
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -48,16 +51,17 @@ export const registerStatusTools = (
     async ({ check }) =>
       wrap(async () => {
         const { config } = ctx;
-        const settings = {
+        const geneanet = {
           credentialsNeeded: false,
           defaultTree: config.tree ?? null,
           lang: config.lang,
           minIntervalMs: config.minIntervalMs,
           treeApi: config.treeBaseUrl,
           site: config.siteBaseUrl,
-          ...(config.adjusted.length ? { adjustedSettings: config.adjusted } : {}),
         };
-        if (!check) return settings;
+        const adjusted = config.adjusted.length ? { adjustedSettings: config.adjusted } : {};
+        const { exportDir } = config;
+        if (!check) return { sources: { geneanet }, exportDir, ...adjusted };
 
         const records = await probe(async () => {
           const html = await client.searchRecordsPage(
@@ -78,7 +82,11 @@ export const registerStatusTools = (
                 : `ok (tree ${config.tree} answered, empty)`;
             })
           : "skipped: GENEANET_TREE is not set";
-        return { ...settings, checks: { siteSearch: records, treeApi: tree } };
+        return {
+          sources: { geneanet: { ...geneanet, checks: { siteSearch: records, treeApi: tree } } },
+          exportDir,
+          ...adjusted,
+        };
       }),
   );
 };

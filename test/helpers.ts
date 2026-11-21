@@ -5,6 +5,7 @@ import { vi } from "vitest";
 
 import { loadConfig, type Config } from "#/config";
 import { createServer } from "#/server";
+import { ProtoMessage } from "#/sources/geneanet/proto/wire";
 
 // The server reads no credential or config file, so loadConfig(env) cannot
 // pick up the developer's own setup: the env passed here is all it sees.
@@ -34,7 +35,11 @@ export type FetchLike = (url: unknown, init?: unknown) => Promise<Response>;
 
 export type Call = { url: URL; body: string; method: string };
 
-export const connect = async (env: Record<string, string> = {}, impl?: FetchLike) => {
+export const connect = async (
+  env: Record<string, string> = {},
+  impl?: FetchLike,
+  opts: { now?: () => number } = {},
+) => {
   const config: Config = loadConfig(env);
   const calls: Call[] = [];
   const fetchMock = vi.fn<FetchLike>(async (url, init) => {
@@ -46,10 +51,11 @@ export const connect = async (env: Record<string, string> = {}, impl?: FetchLike
     });
     return impl ? impl(url, init) : binResponse(new Uint8Array());
   });
-  const { server } = createServer({
+  const { server, cache } = createServer({
     config,
     fetch: fetchMock as unknown as typeof fetch,
     gate: async () => {},
+    ...(opts.now ? { now: opts.now } : {}),
   });
 
   // Both halves of a linked pair must come from the SAME package: v2 exports
@@ -62,6 +68,8 @@ export const connect = async (env: Record<string, string> = {}, impl?: FetchLike
 
   return {
     client,
+    /** The server's person cache, to check what a call left in it. */
+    cache,
     /** Plain data, never the mock: a vitest mock in the return type fails tsc with TS2883. */
     calls: (): Call[] => calls,
     toolNames: async (): Promise<string[]> =>
@@ -93,13 +101,24 @@ export const connect = async (env: Record<string, string> = {}, impl?: FetchLike
   };
 };
 
-/** Route a mocked request by the tree API's `arbre` operation. */
+/**
+ * Route a mocked request by the tree API's `arbre` operation. A route gets the
+ * request as a `Call`, so it can answer by what was sent (see `sentMessage`).
+ */
 export const byOperation =
-  (routes: Record<string, () => Response>): FetchLike =>
-  async (url) => {
+  (routes: Record<string, (call: Call) => Response>): FetchLike =>
+  async (url, init) => {
     const u = new URL(String(url));
     const op = u.searchParams.get("arbre");
     const route = op ? routes[op] : routes[u.pathname];
     if (!route) throw new Error(`unexpected request ${u.toString()}`);
-    return route();
+    const i = (init ?? {}) as RequestInit;
+    return route({ url: u, body: String(i.body ?? ""), method: i.method ?? "GET" });
   };
+
+/** Decode the protobuf a tree API call sent, undoing the double %-escaping. */
+export const sentMessage = (call: Call): ProtoMessage => {
+  const hex = decodeURIComponent(call.body.replace(/^data=/, ""));
+  const bytes = (hex.match(/%([0-9A-F]{2})/g) ?? []).map((h) => parseInt(h.slice(1), 16));
+  return new ProtoMessage(Uint8Array.from(bytes));
+};

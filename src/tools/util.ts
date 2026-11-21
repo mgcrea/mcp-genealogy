@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-import { GeneanetApiError } from "#/client/errors";
 import { TREE_NAME } from "#/config";
+import { DeadlineError, GeneanetApiError } from "#/sources/geneanet/errors";
 
 export type ToolResult = {
   content: { type: "text"; text: string }[];
@@ -32,8 +32,21 @@ export class ArgumentError extends Error {
   }
 }
 
+/**
+ * How long a tool call may spend on Geneanet, retries included: a single-request tool passes
+ * `client.now() + CALL_DEADLINE_MS` as its deadline, so it ends before a 60 s client timeout.
+ */
+export const CALL_DEADLINE_MS = 55_000;
+
 /** Render a thrown value as a tool error, preserving upstream detail. */
 export const toFailure = (err: unknown): ToolResult => {
+  // A batch hands a cut-off request back in `remaining`; one reaching here failed the call.
+  if (err instanceof DeadlineError) {
+    return fail(err.message, {
+      remedy: "Geneanet is slow to answer right now; try again in a minute.",
+      status: err.status,
+    });
+  }
   if (err instanceof GeneanetApiError) {
     return fail(err.message, {
       ...(err.remedy ? { remedy: err.remedy } : {}),

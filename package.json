@@ -1,9 +1,11 @@
 {
-  "name": "@mgcrea/mcp-geneanet",
+  "name": "@mgcrea/mcp-genealogy",
   "version": "0.1.0",
-  "description": "Model Context Protocol server for Geneanet genealogy: search all records, read family trees",
+  "description": "Model Context Protocol server for genealogy records: search Geneanet's trees and archive indexes, read persons and pedigrees",
   "keywords": [
+    "genealogy",
     "geneanet",
+    "matchid",
     "mcp",
     "model-context-protocol"
   ],
@@ -11,10 +13,10 @@
   "author": "Olivier Louvignes <olivier@mgcrea.io>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mgcrea/mcp-geneanet.git"
+    "url": "git+https://github.com/mgcrea/mcp-genealogy.git"
   },
   "bin": {
-    "geneanet-mcp": "dist/cli.js"
+    "genealogy-mcp": "dist/cli.js"
   },
   "files": [
     "dist"
@@ -49,7 +51,7 @@
     "release": "pnpm dlx release-it",
     "docker:build": "BUILDER=build scripts/docker-build.sh",
     "docker:buildx": "BUILDER=buildx scripts/docker-build.sh",
-    "docker:push": "docker push mgcrea/mcp-geneanet:latest && docker push mgcrea/mcp-geneanet:$npm_package_version",
+    "docker:push": "docker push mgcrea/mcp-genealogy:latest && docker push mgcrea/mcp-genealogy:$npm_package_version",
     "docker:release": "BUILDER=buildx scripts/docker-build.sh --push",
     "prepublishOnly": "pnpm build"
   },

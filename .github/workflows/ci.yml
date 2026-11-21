@@ -81,9 +81,11 @@ jobs:
               '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
               '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
             | env HOME=/nonexistent "$@" node dist/cli.js 2>/dev/null \
-            | grep -o '"name":"geneanet_[a-z0-9_]*"' | sort -u
+            | grep -oE '"name":"(geneanet|genealogy)_[a-z0-9_]*"' | sort -u
           }
-          expected='"name":"geneanet_auth_status"
+          expected='"name":"genealogy_export_gedcom"
+          "name":"genealogy_status"
+          "name":"geneanet_get_people"
           "name":"geneanet_get_person"
           "name":"geneanet_get_tree"
           "name":"geneanet_search_records"
@@ -98,7 +100,7 @@ jobs:
             || { echo "unconfigured tool set differs:"; list_tools; exit 1; }
           # 2. Every setting given, bad values included: configuration must
           #    never add, remove or kill tools (bad values are clamped, not fatal).
-          [ "$(list_tools GENEANET_TREE=maudrenel1 GENEANET_MIN_INTERVAL_MS=1 GENEANET_TREE_API_URL=nope)" = "$expected" ] \
+          [ "$(list_tools GENEANET_TREE=maudrenel1 GENEANET_MIN_INTERVAL_MS=1 GENEANET_TREE_API_URL=nope GENEALOGY_EXPORT_DIR=nope)" = "$expected" ] \
             || { echo "configured tool set differs"; exit 1; }
           echo "smoke test ok: $(printf '%s\n' "$expected" | wc -l) tools"
 

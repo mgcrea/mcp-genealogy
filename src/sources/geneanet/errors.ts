@@ -27,3 +27,12 @@ export class GeneanetApiError extends Error {
 export class BlockedError extends GeneanetApiError {
   override readonly name: string = "BlockedError";
 }
+
+/**
+ * The caller's absolute deadline cut the request off, or left no time to send
+ * or retry it. Not Geneanet's fault: the person never got a fair attempt, so a
+ * batch hands it back to call again rather than reporting it as a failure.
+ */
+export class DeadlineError extends GeneanetApiError {
+  override readonly name: string = "DeadlineError";
+}

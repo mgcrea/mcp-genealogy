@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { RecordsParseError, buildRecordsQuery, parseRecordsPage } from "#/records/search";
+import { parseRef } from "#/schema/ids";
+import type { Ref } from "#/schema/types";
+import { RecordsParseError, buildRecordsQuery, parseRecordsPage } from "#/sources/geneanet/records";
 import { fixtureText } from "#test/helpers";
 
 const SITE = "https://en.geneanet.org";
@@ -14,30 +16,64 @@ describe("parseRecordsPage (records-louvignes-cahuzac.html)", () => {
     expect(page.hits).toHaveLength(11);
   });
 
-  it("reads a family-tree hit, with what get_person needs", () => {
+  it("reads a family-tree hit, with its ref (holding its url) and what get_person needs", () => {
     expect(page.hits[0]).toEqual({
       kind: "family_tree",
       name: "LOUVIGNES Marie Germaine",
       spouse: "ROBERT Jean (1893)",
       source: "Family tree of maudrenel1",
-      dates: ["Birth 1870", "Death 1944"],
-      places: [
-        { place: "Cahuzac-sur-Vère, Tarn, France", events: ["birth", "marriage"] },
-        { place: "Saint-Étienne, Loire, France", events: ["death"] },
+      dates: [
+        { event: "birth", date: { date: "1870" } },
+        { event: "death", date: { date: "1944" } },
       ],
-      url: "https://gw.geneanet.org/maudrenel1?lang=en&n=louvignes&p=marie+germaine",
+      places: [
+        {
+          place: { name: "Cahuzac-sur-Vère", raw: "Cahuzac-sur-Vère, Tarn, France" },
+          events: ["birth", "marriage"],
+        },
+        {
+          place: { name: "Saint-Étienne", raw: "Saint-Étienne, Loire, France" },
+          events: ["death"],
+        },
+      ],
+      ref: {
+        source: "geneanet",
+        id: "maudrenel1:louvignes/marie germaine/0",
+        url: "https://gw.geneanet.org/maudrenel1?lang=en&n=louvignes&p=marie+germaine",
+      },
       tree: "maudrenel1",
       n: "louvignes",
       p: "marie germaine",
     });
   });
 
-  it("joins a date range that wraps onto a second line", () => {
+  it("gives every family-tree hit a key-form ref that parseRef accepts, and no other hit a ref", () => {
+    const trees = page.hits.filter((h) => h.kind === "family_tree");
+    expect(trees.length).toBeGreaterThan(0);
+    for (const h of trees) {
+      expect(parseRef(h.ref as Ref)).toEqual({
+        source: "geneanet",
+        tree: h.tree,
+        n: h.n,
+        p: h.p,
+        oc: h.oc ?? 0,
+      });
+    }
+    for (const other of page.hits.filter((h) => h.kind !== "family_tree")) {
+      expect(other.ref).toBeUndefined();
+    }
+  });
+
+  it("joins a date range that wraps onto a second line, and reads it as a DateValue", () => {
     expect(page.hits[1]).toMatchObject({
       kind: "society_index",
       name: "LOUVIGNES Jean François Pauline",
-      dates: ["Marriage (between 1825 and 1875)"],
+      dates: [{ event: "marriage", date: { date: "1825", qualifier: "between", dateTo: "1875" } }],
     });
+  });
+
+  it("marks no hit of this page as from the INSEE index or Premium-masked", () => {
+    expect(page.hits.filter((h) => h.hint || h.withheld)).toEqual([]);
   });
 
   it("reads society and collaborative indexes, with their relationship to the searched name", () => {
@@ -64,7 +100,91 @@ describe("parseRecordsPage (records-louvignes-cahuzac.html)", () => {
   });
 });
 
+describe("parseRecordsPage (records-louvignes-deaths-insee.html: deaths 1970-2005)", () => {
+  const page = parseRecordsPage(fixtureText("records-louvignes-deaths-insee.html"), SITE, TREES);
+  const insee = page.hits.filter((h) => h.source === "Fichier des décès de l'INSEE");
+
+  it("points the INSEE death index hits to matchID, and only them", () => {
+    expect(page.total).toBe(32);
+    expect(insee).toHaveLength(9);
+    expect(page.hits.filter((h) => h.hint === "matchid")).toEqual(insee);
+  });
+
+  it("reads an INSEE hit's places, with the INSEE code, and its Premium date range", () => {
+    expect(insee[0]).toEqual({
+      kind: "society_index",
+      name: "LOUVIGNES Michel Jean Joseph",
+      source: "Fichier des décès de l'INSEE",
+      dates: [{ event: "date", date: { date: "1875", qualifier: "between", dateTo: "2025" } }],
+      places: [
+        {
+          place: { name: "Salvagnac", insee: "81276", raw: "Salvagnac, 81276, Tarn, France" },
+          events: ["birth"],
+        },
+        {
+          place: { name: "Lavaur", insee: "81140", raw: "Lavaur, 81140, Tarn, France" },
+          events: ["death"],
+        },
+      ],
+      url: "https://en.geneanet.org/cercles/view/colgnecminsee/23224406",
+      hint: "matchid",
+    });
+  });
+
+  it("keeps a family-tree place's postal code out of insee", () => {
+    const juliette = page.hits.find((h) => h.tree === "adages");
+    expect(juliette).toMatchObject({
+      kind: "family_tree",
+      name: "LOUVIGNES Juliette Henriette Jeanne",
+    });
+    expect(juliette?.url).toBeUndefined();
+    expect(juliette?.places.map((p) => p.place)).toContainEqual({
+      name: "Albi",
+      code: "81000",
+      raw: "Albi, 81000, Tarn, France",
+    });
+    const places = page.hits.filter((h) => !h.hint).flatMap((h) => h.places.map((p) => p.place));
+    expect(places.some((p) => p.code)).toBe(true);
+    expect(places.filter((p) => p.insee)).toEqual([]);
+  });
+
+  it("reads INSEE codes on the INSEE index hits", () => {
+    expect(insee.flatMap((h) => h.places.map((p) => p.place))).toContainEqual({
+      name: "Lisle-sur-Tarn",
+      insee: "81145",
+      raw: "Lisle-sur-Tarn, 81145, Tarn, France",
+    });
+    expect(insee.every((h) => h.places.every((p) => !p.place.code))).toBe(true);
+  });
+
+  it("keeps the url of hits with no ref", () => {
+    expect(insee.every((h) => h.url && !h.ref)).toBe(true);
+  });
+
+  it("names the cemetery surveys", () => {
+    expect(page.hits.filter((h) => h.kind === "cemetery").length).toBeGreaterThan(0);
+  });
+});
+
+/** The first row of a real page, with its name or a date replaced by the Premium mask. */
+const masked = (from: RegExp, to: string) => {
+  const html = fixtureText("records-louvignes-cahuzac.html");
+  const end = html.indexOf("</a>") + "</a>".length;
+  return parseRecordsPage(html.slice(0, end).replace(from, to), SITE, TREES).hits[0];
+};
+
 describe("parseRecordsPage edge cases", () => {
+  it("marks a hit whose name or dates show the XXXX mask as withheld: premium", () => {
+    expect(masked(/>1870</, ">XXXX<")).toMatchObject({
+      dates: [{ event: "birth", date: { text: "XXXX" } }, { event: "death" }],
+      withheld: "premium",
+    });
+    expect(masked(/Marie Germaine {4}</, "XXXX <")).toMatchObject({
+      name: "LOUVIGNES XXXX",
+      withheld: "premium",
+    });
+  });
+
   it("reads the nothing-found page as zero results", () => {
     expect(parseRecordsPage(fixtureText("records-empty.html"), SITE, TREES)).toEqual({
       total: 0,

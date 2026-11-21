@@ -1,20 +1,33 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
-import { GeneanetApiError } from "#/client/errors";
-import type { GeneanetClient } from "#/client/geneanet";
-import { shapeGraph, shapePerson, shapeSearchHits } from "#/client/shape";
+import { geneanetKeyRefId, geneanetRefId, refKey, type RefInput } from "#/schema/ids";
+import { toSearchHits } from "#/sources/geneanet/adapter";
+import { fetchPeople, fetchPerson, isFailure, readGraph } from "#/sources/geneanet/fetch";
+import type { GeneanetClient } from "#/sources/geneanet/geneanet";
 import {
-  decodeGraph,
-  decodePerson,
   decodeSearchList,
-  encodeGraphRequest,
-  encodePersonRequest,
   encodeSearchRequest,
   type PersonRef,
-} from "#/proto/messages";
+} from "#/sources/geneanet/proto/messages";
 import type { ToolContext } from "#/tools/index";
-import { ArgumentError, indexArg, nArg, ocArg, pArg, treeArg, wrap } from "#/tools/util";
+import {
+  ArgumentError,
+  CALL_DEADLINE_MS,
+  fail,
+  indexArg,
+  nArg,
+  ocArg,
+  ok,
+  pArg,
+  toFailure,
+  treeArg,
+  wrap,
+} from "#/tools/util";
+
+/** geneanet_get_people's cap and scheduling budget: the call ends well inside ~55 s. */
+const PEOPLE_MAX = 40;
+const PEOPLE_BUDGET_MS = 45_000;
 
 const resolveTree = (ctx: ToolContext, tree: string | undefined): string => {
   const resolved = tree ?? ctx.config.tree;
@@ -37,44 +50,22 @@ const resolveRef = (args: { index?: number; n?: string; p?: string; oc: number }
   );
 };
 
-const notFound = (tree: string, ref: PersonRef): GeneanetApiError =>
-  new GeneanetApiError(
-    `Tree ${tree} has no ${"index" in ref ? `person with index ${ref.index}` : `person ${ref.p} ${ref.n} (oc ${ref.oc})`}.`,
-    {
-      status: 404,
-      remedy:
-        "Indexes belong to one tree. Look the person up with geneanet_search_tree in this tree, " +
-        "or check n/p/oc against the profile URL. A private person also answers this way.",
-    },
-  );
-
 export const registerTreeTools = (
   server: McpServer,
   client: GeneanetClient,
   ctx: ToolContext,
 ): void => {
   const base = client.treeBaseUrl;
-
-  /** The person op takes only an index; a key is resolved through a one-node graph. */
-  const indexFor = async (tree: string, ref: PersonRef): Promise<number> => {
-    if ("index" in ref) return ref.index;
-    const res = await client.treeApi(
-      "graph_v2",
-      tree,
-      encodeGraphRequest({ person: ref, ancestorGenerations: 0, descendantGenerations: 0 }),
-    );
-    const root = res ? decodeGraph(res).ancestors[0] : undefined;
-    if (!root || root.person.index < 0) throw notFound(tree, ref);
-    return root.person.index;
-  };
+  const deps = { client, cache: ctx.cache };
 
   server.registerTool(
     "geneanet_search_tree",
     {
       title: "Geneanet: Search One Family Tree",
       description:
-        "Search ONE family tree by surname and/or first name; returns each match's index, dates, " +
-        "parents and spouses, ready for geneanet_get_person. Matching is the tree's own: names " +
+        "Search ONE family tree by surname and/or first name; returns each match's ref, index and " +
+        "life years (born/died), with parents and spouses as briefs {ref, name, born, bornAt, " +
+        "died, diedAt}; pass an index to geneanet_get_person. Matching is the tree's own: names " +
         "starting with what you type, accents ignored. To find people across every tree and the " +
         "archive indexes, use geneanet_search_records instead. One request.",
       inputSchema: z.object({
@@ -116,8 +107,9 @@ export const registerTreeTools = (
             ...(firstname ? { firstname } : {}),
             limit,
           }),
+          { deadline: client.now() + CALL_DEADLINE_MS },
         );
-        return shapeSearchHits(base, t, res ? decodeSearchList(res) : [], ctx.config.lang, limit);
+        return toSearchHits(base, t, res ? decodeSearchList(res) : [], ctx.config.lang, limit);
       }),
   );
 
@@ -128,10 +120,14 @@ export const registerTreeTools = (
       description:
         "Read one person's full record from a family tree: names and aliases, birth, baptism, " +
         "death and burial with places and sources, occupation, notes, parents, every union with " +
-        "its children, and the event list with witnesses. Relatives come back as {index, name, " +
-        "life}; pass an index back here to walk the tree one person at a time, or use " +
-        "geneanet_get_tree for several generations in one call. One request with `index`, two " +
-        "with n/p.",
+        "its children, and the event list with witnesses, in the shared genealogy shape. " +
+        "Relatives come back as briefs {ref, name, born, bornAt, died, diedAt}, whose ref id is " +
+        '"<tree>:<index>"; pass that index back here to walk the tree one person at a time, or ' +
+        "use geneanet_get_tree for several generations in one call. A person the tree hides " +
+        'comes back with `withheld` ("private", or "probably-private" when inferred from an empty ' +
+        "record) and `withheldReason`. A place's `code` is a commune code as the tree wrote it, " +
+        "postal or INSEE unknown (never `insee`). One request with `index`, two with n/p, none " +
+        "when this session already read the whole record.",
       inputSchema: z.object({
         tree: treeArg,
         index: indexArg,
@@ -154,19 +150,102 @@ export const registerTreeTools = (
       wrap(async () => {
         const t = resolveTree(ctx, args.tree);
         const ref = resolveRef(args);
-        const index = await indexFor(t, ref);
-        const res = await client.treeApi(
-          "person",
-          t,
-          encodePersonRequest({
-            index,
+        const id = "index" in ref ? geneanetRefId(t, ref.index) : geneanetKeyRefId(t, ref);
+        return fetchPerson(
+          deps,
+          { source: "geneanet", id },
+          {
+            detail: "full",
             eventsLimit: args.eventsLimit,
-            witnessedEventsLimit: args.eventsLimit,
-          }),
+            deadline: client.now() + CALL_DEADLINE_MS,
+          },
         );
-        if (!res) throw notFound(t, ref);
-        return shapePerson(base, t, decodePerson(res));
       }),
+  );
+
+  server.registerTool(
+    "geneanet_get_people",
+    {
+      title: "Geneanet: Get Several People",
+      description:
+        "Read up to 40 people of ONE family tree by index in one call, e.g. every index a " +
+        'geneanet_get_tree answer listed. detail "summary" (default) gives each person\'s name, ' +
+        "sex, vital events with places and sources, occupation, parents and spouses as briefs, " +
+        'and a children count per family; "full" gives each the same record as ' +
+        "geneanet_get_person. People are fetched one after another at about one per second; " +
+        "people read earlier in this session cost nothing. A person that cannot be read comes " +
+        "back in its place as {ref, error, remedy}. `withheld` and place `code`s read as in " +
+        "geneanet_get_person. Indexes not reached within the time budget come back in " +
+        "`remaining`: call again with them.",
+      inputSchema: z.object({
+        tree: treeArg,
+        indexes: z
+          .array(z.number().int().min(0))
+          .min(1)
+          .max(PEOPLE_MAX)
+          .describe(
+            "1-40 person indexes in THIS tree, as every other geneanet_* tree tool returns them (e.g. [27, 85]).",
+          ),
+        detail: z
+          .enum(["summary", "full"])
+          .default("summary")
+          .describe(
+            'How much of each person to return: "summary" (vitals, parents, spouses, children counts) or "full" (as geneanet_get_person). Defaults to "summary".',
+          ),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ tree, indexes, detail }, extra) => {
+      try {
+        const t = resolveTree(ctx, tree);
+        const refs: RefInput[] = indexes.map((i) => ({
+          source: "geneanet",
+          id: geneanetRefId(t, i),
+        }));
+        const indexOf = new Map(refs.map((r, i) => [refKey(r), indexes[i]]));
+        // oxlint-disable-next-line no-underscore-dangle -- `_meta` is the MCP protocol's name.
+        const progressToken = extra.mcpReq._meta?.progressToken;
+        const result = await fetchPeople(deps, refs, {
+          detail,
+          max: PEOPLE_MAX,
+          budgetMs: PEOPLE_BUDGET_MS,
+          ...(progressToken === undefined
+            ? {}
+            : {
+                // A lost notification must not fail the read.
+                onProgress: (progress: number, total: number) =>
+                  extra.mcpReq
+                    .notify({
+                      method: "notifications/progress",
+                      params: { progressToken, progress, total },
+                    })
+                    .catch(() => {}),
+              }),
+        });
+        const remaining = result.remaining.map((r) => indexOf.get(refKey(r)));
+        const answer = {
+          tree: t,
+          detail,
+          people: result.people,
+          ...(remaining.length > 0
+            ? {
+                remaining,
+                note: "Not read in this call: call geneanet_get_people again with `remaining` as `indexes`.",
+              }
+            : {}),
+        };
+        const firstFailure = result.people.find(isFailure);
+        if (firstFailure && result.people.every(isFailure)) {
+          return fail(firstFailure.error, {
+            ...(firstFailure.remedy ? { remedy: firstFailure.remedy } : {}),
+            ...answer,
+          });
+        }
+        return ok(answer);
+      } catch (err) {
+        return toFailure(err);
+      }
+    },
   );
 
   server.registerTool(
@@ -177,8 +256,9 @@ export const registerTreeTools = (
         "Ancestors and descendants of one person in a single call, with each relationship already " +
         "resolved: ancestors carry generation (1 = parents) and fatherIndex/motherIndex; " +
         "descendants carry relation (child or spouse) with parentIndexes and/or spouseOfIndexes (a cousin marriage has both); siblings " +
-        "are listed too. Names and life years only; use geneanet_get_person on an index for " +
-        "places, sources and notes. One request whatever the depth, but 10 generations can be " +
+        "are listed too. Each person is a brief: ref, index, name and life years (born/died), " +
+        'with withheld: "private" when the tree hides them; use geneanet_get_person on an index ' +
+        "for places, sources and notes. One request whatever the depth, but 10 generations can be " +
         "over a thousand people, so start small.",
       inputSchema: z.object({
         tree: treeArg,
@@ -209,18 +289,13 @@ export const registerTreeTools = (
       wrap(async () => {
         const t = resolveTree(ctx, args.tree);
         const ref = resolveRef(args);
-        const res = await client.treeApi(
-          "graph_v2",
+        return readGraph(
+          client,
           t,
-          encodeGraphRequest({
-            person: ref,
-            ancestorGenerations: args.ancestors,
-            descendantGenerations: args.descendants,
-          }),
+          ref,
+          { ancestors: args.ancestors, descendants: args.descendants },
+          client.now() + CALL_DEADLINE_MS,
         );
-        const shaped = res ? shapeGraph(base, t, decodeGraph(res)) : { found: false };
-        if (shaped.found === false) throw notFound(t, ref);
-        return shaped;
       }),
   );
 };

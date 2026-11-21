@@ -1,0 +1,39 @@
+0 HEAD
+1 GEDC
+2 VERS 7.0
+1 SOUR mcp-genealogy
+2 VERS 1.2.3
+1 DATE 21 NOV 2026
+0 @I1@ INDI
+1 NAME Georges /LOUVIGNES/
+1 SEX M
+1 BIRT
+2 DATE ABT 1929
+2 SOUR @S1@
+3 NOTE https://gw.geneanet.org/rlouvignes?lang=en&n=louvignes&p=georges
+1 EXID rlouvignes:1204
+2 TYPE https://gw.geneanet.org/rlouvignes
+0 @I2@ INDI
+1 NAME Georges /LOUVIGNES/
+1 SEX M
+1 BIRT
+2 DATE 22 OCT 1929
+2 PLAC Beauvais-sur-Tescou
+2 SOUR @S2@
+3 PAGE 03
+3 NOTE https://deces.matchid.io/id/qlOMgl94qBBi
+1 DEAT
+2 DATE 25 JAN 2009
+2 PLAC Lafrançaise
+2 SOUR @S2@
+3 PAGE 03
+3 NOTE https://deces.matchid.io/id/qlOMgl94qBBi
+1 EXID qlOMgl94qBBi
+2 TYPE https://deces.matchid.io
+0 @S1@ SOUR
+1 TITL Geneanet tree rlouvignes
+1 NOTE https://gw.geneanet.org/rlouvignes
+0 @S2@ SOUR
+1 TITL INSEE, fichier des personnes décédées 2009
+1 NOTE https://deces.matchid.io
+0 TRLR

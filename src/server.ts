@@ -1,9 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/server";
 
 import { BUILD_INFO } from "#/build-info";
-import { GeneanetClient } from "#/client/geneanet";
-import type { Logger } from "#/client/log";
+import { PersonCache } from "#/cache";
 import type { Config } from "#/config";
+import type { Logger } from "#/log";
+import { GeneanetClient } from "#/sources/geneanet/geneanet";
 import { registerTools } from "#/tools/index";
 
 export const SERVER_NAME = BUILD_INFO.name;
@@ -15,11 +16,15 @@ export type CreateServerOptions = {
   logger?: Logger;
   /** Override the request pacing (tests pass a no-op). */
   gate?: () => Promise<void>;
+  /** The clock request deadlines are read on (tests pass a fake). Defaults to Date.now. */
+  now?: () => number;
 };
 
 export type CreatedServer = {
   server: McpServer;
   client: GeneanetClient;
+  /** People fetched so far, shared by every tool of this server. */
+  cache: PersonCache;
 };
 
 export const createServer = (opts: CreateServerOptions): CreatedServer => {
@@ -36,8 +41,10 @@ export const createServer = (opts: CreateServerOptions): CreatedServer => {
     ...(opts.fetch ? { fetch: opts.fetch } : {}),
     ...(opts.logger ? { logger: opts.logger } : {}),
     ...(opts.gate ? { gate: opts.gate } : {}),
+    ...(opts.now ? { now: opts.now } : {}),
   });
 
-  registerTools(server, client, { config });
-  return { server, client };
+  const cache = new PersonCache();
+  registerTools(server, client, { config, cache });
+  return { server, client, cache };
 };

@@ -8,12 +8,14 @@ import { createServer } from "#/server";
 
 // Everything goes to stderr: stdout is the MCP protocol channel, and a stray
 // log line there corrupts the stream.
+// GENEANET_DEBUG is the name from before the rename, still accepted.
+const debug = Boolean(process.env.GENEALOGY_DEBUG || process.env.GENEANET_DEBUG);
 const stderrLogger = {
   debug: (...args: unknown[]) => {
-    if (process.env.GENEANET_DEBUG) console.error("[geneanet-mcp]", ...args);
+    if (debug) console.error("[genealogy-mcp]", ...args);
   },
-  warn: (...args: unknown[]) => console.error("[geneanet-mcp]", ...args),
-  error: (...args: unknown[]) => console.error("[geneanet-mcp]", ...args),
+  warn: (...args: unknown[]) => console.error("[genealogy-mcp]", ...args),
+  error: (...args: unknown[]) => console.error("[genealogy-mcp]", ...args),
 };
 
 /** Show a config mistake as its field messages, not 40 frames of zod internals. */
@@ -38,7 +40,7 @@ const main = async (): Promise<void> => {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   stderrLogger.warn(
-    `geneanet-mcp connected (read-only, no credentials; tree=${config.tree ?? "none"}, ` +
+    `genealogy-mcp connected (read-only toward sources, no credentials; tree=${config.tree ?? "none"}, ` +
       `lang=${config.lang}, pacing=${config.minIntervalMs}ms)`,
   );
   for (const line of config.adjusted) stderrLogger.warn(line);
@@ -52,6 +54,6 @@ const main = async (): Promise<void> => {
 };
 
 main().catch((err: unknown) => {
-  console.error(`[geneanet-mcp] fatal: ${describeFatal(err)}`);
+  console.error(`[genealogy-mcp] fatal: ${describeFatal(err)}`);
   process.exit(1);
 });

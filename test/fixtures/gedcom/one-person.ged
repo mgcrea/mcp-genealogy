@@ -1,0 +1,131 @@
+0 HEAD
+1 GEDC
+2 VERS 7.0
+1 SOUR mcp-genealogy
+2 VERS 1.2.3
+1 DATE 21 NOV 2026
+0 @I1@ INDI
+1 NAME Marie Germaine /LOUVIGNES/
+1 SEX F
+1 BIRT
+2 DATE 22 NOV 1870
+2 PLAC Cahuzac-sur-Vère, Tarn, Occitanie, France
+2 NOTE Née au lieu dit "Roziers".
+2 SOUR @S1@
+3 NOTE https://gw.geneanet.org/maudrenel1?lang=en&n=louvignes&p=marie+germaine
+1 EVEN
+2 TYPE recensement
+2 DATE 1896
+2 PLAC Cordes-sur-Ciel, Tarn, Occitanie, France
+2 SOUR @S1@
+3 NOTE https://gw.geneanet.org/maudrenel1?lang=en&n=louvignes&p=marie+germaine
+1 EVEN
+2 TYPE recensement
+2 DATE 1901
+2 PLAC Cordes-sur-Ciel, Tarn, Occitanie, France
+2 SOUR @S1@
+3 NOTE https://gw.geneanet.org/maudrenel1?lang=en&n=louvignes&p=marie+germaine
+1 EVEN
+2 TYPE recensement
+2 DATE 1921
+2 PLAC Senouillac, Tarn, Occitanie, France
+2 NOTE Belle-Mère chez Julien VIOLES
+2 SOUR @S1@
+3 NOTE https://gw.geneanet.org/maudrenel1?lang=en&n=louvignes&p=marie+germaine
+1 EVEN
+2 TYPE recensement
+2 DATE 1931
+2 PLAC Albi, Tarn, Occitanie, France
+2 SOUR @S1@
+3 NOTE https://gw.geneanet.org/maudrenel1?lang=en&n=louvignes&p=marie+germaine
+1 RESI
+2 DATE 16 OCT 1934
+2 PLAC Saint-Étienne, Loire, Auvergne-Rhône-Alpes, France
+2 NOTE Le 16 octobre 1934, Marie Germaine, dite Cécile ou Cécilia, rentre aux Petites Sœurs des Pauvres. Elle y restera jusqu'à son décès en 1944.
+2 SOUR @S1@
+3 NOTE https://gw.geneanet.org/maudrenel1?lang=en&n=louvignes&p=marie+germaine
+1 DEAT
+2 DATE 16 NOV 1944
+2 PLAC Saint-Étienne, Loire, Auvergne-Rhône-Alpes, France
+2 SOUR @S1@
+3 NOTE https://gw.geneanet.org/maudrenel1?lang=en&n=louvignes&p=marie+germaine
+1 EVEN
+2 TYPE validation testament
+2 DATE 1945
+2 PLAC Saint-Étienne, Loire, Auvergne-Rhône-Alpes, France
+2 NOTE Table des successions et absences.
+2 SOUR @S1@
+3 NOTE https://gw.geneanet.org/maudrenel1?lang=en&n=louvignes&p=marie+germaine
+1 FAMC @F1@
+1 FAMS @F2@
+1 EXID maudrenel1:27
+2 TYPE https://gw.geneanet.org/maudrenel1
+1 NOTE 1893 : Signe Cécilia Louvignes lors de son mariage avec Jean Robert. Réside alors à Arzac,commune de Cahuzac sur Vère (Tarn).
+2 CONT
+2 CONT 1896 : Réside à Cordes sur Ciel (Tarn).
+2 CONT
+2 CONT 1901 : Réside à Cordes sur Ciel (Tarn).
+2 CONT
+2 CONT 1906 : ne réside plus à Cordes sur Ciel (Tarn).
+2 CONT
+2 CONT 1921 : Réside chez son beau-fils Julien Violes à Sénouillac (Tarn).
+2 CONT
+2 CONT Marie-Germaine est dénommée Cécilia.
+2 CONT
+2 CONT 1926 : Ne semble pas résider ni à Sénouillac, ni à Albi (Tarn).
+2 CONT
+2 CONT 1931 : Réside au 4 rue des Pénitens à Albi (Tarn) chez Armand Pradet (son gendre). Ce dernier est désigné sur l'acte de recensement comme le chef de famille. Elle est également dénommée Cécilia et non pas Marie Germaine.
+2 CONT
+2 CONT A cette même adresse réside :
+2 CONT
+2 CONT - Son mari, Jean qui est journalier.
+2 CONT
+2 CONT - La compagne d'Armand Pradet, Madeleine Robert (la fille de Marie Germaine).
+2 CONT
+2 CONT - La fille d'Armand Pradet, Marguerite Pradet (la petite-fille de Marie Germaine).
+2 CONT
+2 CONT Entre 1931 et 1934 : déménage avec son époux à Saint Etienne (Loire).
+2 CONT
+2 CONT 16/10/1934 : Réside chez les Petites Sœurs des Pauvres, au 28, rue Epitalon à Saint Etienne (Loire). Elle y restera jusqu'à son décès en 1944.
+2 CONT
+2 CONT Est nommée "Marie Louise" sur son acte de décès.
+2 CONT
+2 CONT Aucune trace de la première fille de Madeleine Robert, c'est à dire Andrée Julienne Violes, née en 1923.
+2 CONT
+2 CONT Marie Germaine dite Cécilia était une personne très élégante. Elle était handicapée et avait un fauteuil roulant (source familiale).
+0 @I2@ INDI
+1 NAME Jean François Paulin LOUVIGNES
+1 SEX M
+1 BIRT
+2 DATE 13 FEB 1841
+1 FAMS @F1@
+1 EXID maudrenel1:55
+2 TYPE https://gw.geneanet.org/maudrenel1
+0 @I3@ INDI
+1 NAME Honorine MAUREL
+1 SEX F
+1 BIRT
+2 DATE 16 MAR 1849
+1 FAMS @F1@
+1 EXID maudrenel1:28
+2 TYPE https://gw.geneanet.org/maudrenel1
+0 @F1@ FAM
+1 HUSB @I2@
+1 WIFE @I3@
+1 CHIL @I1@
+0 @F2@ FAM
+1 MARB
+2 DATE 29 OCT 1893
+2 PLAC Féneyrols, Tarn-et-Garonne, Occitanie, France
+2 SOUR @S1@
+3 NOTE https://gw.geneanet.org/maudrenel1?lang=en&n=louvignes&p=marie+germaine
+1 MARR
+2 DATE 11 NOV 1893
+2 PLAC Cahuzac-sur-Vère
+2 SOUR @S1@
+3 NOTE https://gw.geneanet.org/maudrenel1?lang=en&n=louvignes&p=marie+germaine
+1 WIFE @I1@
+0 @S1@ SOUR
+1 TITL Geneanet tree maudrenel1
+1 NOTE https://gw.geneanet.org/maudrenel1
+0 TRLR

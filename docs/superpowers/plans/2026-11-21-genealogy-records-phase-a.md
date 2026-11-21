@@ -36,11 +36,13 @@
 ### Task 0: Branch, worktree, rename identity, `genealogy_status`
 
 **Files:**
+
 - Modify: `.gitignore` (add `.claude/worktrees`), `package.json` (name `@mgcrea/mcp-genealogy`, bin `genealogy-mcp`, description, keywords add `genealogy`, `matchid`), `src/build-info.ts` (fallback name), `scripts/docker-build.sh` (image `mgcrea/mcp-genealogy`), `README.md` (title and intro only; full rewrite in Task 11), `.github/workflows/ci.yml` (smoke-test grep `"name":"(geneanet|genealogy)_…"` and expected list), `src/tools/index.ts`
 - Rename: `src/tools/status.ts` → registers `genealogy_status` instead of `geneanet_auth_status`
 - Test: `test/tools.test.ts`
 
 **Interfaces:**
+
 - Produces: `registerStatusTools(server, client, ctx)` registering `genealogy_status` with the same `check` input. Output: `{ sources: { geneanet: {credentialsNeeded:false, defaultTree, lang, minIntervalMs, treeApi, site, checks?} }, exportDir?, adjustedSettings? }` (`exportDir` added in Task 10).
 
 - [ ] **Step 1:** Commit `.gitignore` with `.claude/worktrees` on `main`, then create the worktree `.claude/worktrees/genealogy-a` on branch `feat/genealogy-phase-a` and `pnpm install` there. All later tasks run in the worktree.
@@ -55,6 +57,7 @@
 Pure move. No behaviour change, no test assertion change.
 
 **Files:**
+
 - Move: `src/client/{geneanet,errors,log}.ts` → `src/sources/geneanet/` (`log.ts` → `src/log.ts`, it is shared), `src/proto/*` → `src/sources/geneanet/proto/`, `src/records/search.ts` → `src/sources/geneanet/records.ts`, `src/client/shape.ts` → `src/sources/geneanet/shape.ts`
 - Modify: every importer (`src/server.ts`, `src/tools/*.ts`, `test/*.ts`)
 
@@ -65,12 +68,15 @@ Pure move. No behaviour change, no test assertion change.
 ### Task 2: Schema types and ids
 
 **Files:**
+
 - Create: `src/schema/types.ts`, `src/schema/ids.ts`
 - Test: `test/schema-ids.test.ts`
 
 **Interfaces:**
+
 - Produces (`types.ts`): `DateValue`, `Place`, `Citation`, `Event`, `Brief`, `Withheld`, `Person`, exactly as in the spec's "Shared schema" block. `Person` also allows the Geneanet extras `tree?: string; index?: number; treeRoot?: true; directAncestorOfTreeRoot?: true; eventsTruncated?: string; deathStatus?: string; detail: "summary" | "full" | "record"` (`record` = a search hit with no fetchable record).
 - Produces (`ids.ts`):
+
   ```ts
   type ParsedId =
     | { source: "geneanet"; tree: string; index: number }
@@ -93,13 +99,16 @@ Pure move. No behaviour change, no test assertion change.
 ### Task 3: Dates (GeneWeb raw, Geneanet wording)
 
 **Files:**
+
 - Create: `src/sources/geneanet/dates.ts`, `scripts/capture.ts` (throwaway capture helper, kept for future captures; not part of the build)
 - Create fixtures: `test/fixtures/person-<tree>-<index>-<form>.bin`, one per raw-date form found
 - Test: `test/dates.test.ts`
 - Modify: `src/sources/geneanet/shape.ts` (`isoFromRaw` replaced by `fromRaw`)
 
 **Interfaces:**
+
 - Produces:
+
   ```ts
   fromRaw(raw: string | undefined, display: string | undefined): DateValue | undefined
   fromWording(line: string): { event: string; date?: DateValue } // one site-search "dates" line
@@ -116,10 +125,12 @@ Pure move. No behaviour change, no test assertion change.
 ### Task 4: Places
 
 **Files:**
+
 - Create: `src/sources/geneanet/places.ts`
 - Test: `test/places.test.ts`
 
 **Interfaces:**
+
 - Produces: `splitPlace(raw: string | undefined): Place | undefined`
 
 Algorithm (spec "Place rules"): trim; split on `,`, trim each part; drop trailing empty parts; if no non-empty part, `undefined`. Remove the first part matching `/^(\d{5}|2[AB]\d{3})$/` into `insee`. Then with remaining parts `r` (length `k`): `name = r[0]`; if `k >= 4`: `country = r[k-1]`, `region = r[k-2]`, `department = r[k-3]`; if `k === 3`: `department = r[1]`, `country = r[2]` _(call: three parts is town, department, country in Geneanet's data)_; if `k === 2`: `department = r[1]`. Parts between `name` and `department` when `k > 4` are not dropped: `text` keeps the original string. Empty parts keep their slot but are omitted from the output.
@@ -133,12 +144,14 @@ Algorithm (spec "Place rules"): trim; split on `,`, trim each part; drop trailin
 ### Task 5: Geneanet person adapter, `withheld`, `geneanet_get_person` on the schema
 
 **Files:**
+
 - Create: `src/sources/geneanet/adapter.ts`
 - Create fixture: `test/fixtures/person-<tree>-<index>-private.bin` (and the `graph_v2` around it if needed)
 - Modify: `src/sources/geneanet/proto/messages.ts` (decode any visibility field found), `src/tools/trees.ts` (`geneanet_get_person`), `src/sources/geneanet/shape.ts` (keep only what the adapter still uses)
 - Test: `test/adapter.test.ts`, update `test/shape.test.ts` / `test/tools.test.ts` assertions for `get_person`
 
 **Interfaces:**
+
 - Consumes: `fromRaw`, `splitPlace`, ids builders, schema types.
 - Produces:
   ```ts
@@ -149,6 +162,7 @@ Algorithm (spec "Place rules"): trim; split on `,`, trim each part; drop trailin
   ```
 
 Mapping rules: vitals become `events` with `type` birth/baptism/death/burial (date from the matching raw event, as today's `vital()` does), place via `splitPlace`, `citations: [geneanetCitation(tree, profileUrl, sourceText)]` (the citation is always present: the profile URL is the citation even with no source text). Event types: GeneWeb type 0–3 as above, 100 → `marriage`, divorce → `divorce`, occupation/residence where GeneWeb's type says so, else `other` with `label` = the event name. Families: `{spouse: toBrief, union?, children: toBrief[], events?: [marriage event with place and citation]}`. When the death status is not plainly "dead" (alive, died young, …), `Person.deathStatus` carries today's wording _(call: keep today's signal, flat; no event is invented for it)_. `summary` drops events other than the four vitals and marriage, `notes`, witnesses, per-event notes. `withheld`:
+
 - `"private"` when the record carries a visibility signal found in Step 1;
 - else `"probably-private"` when the record has no dates, no places, no events, and `death.type` is 0 (alive) or 4 (unknown), with `withheldReason: "Geneanet returned the name only; the tree hides living or private people from visitors (inferred: the record itself does not say)."`;
 - `Brief.withheld = "private"` when `SimplePerson.hidden`.
@@ -163,10 +177,12 @@ Mapping rules: vitals become `events` with `type` birth/baptism/death/burial (da
 ### Task 6: Tree, tree search and site search on the schema
 
 **Files:**
+
 - Modify: `src/sources/geneanet/adapter.ts` (graph and search mapping), `src/sources/geneanet/records.ts` (hit shape), `src/tools/trees.ts`, `src/tools/records.ts`
 - Test: `test/adapter.test.ts`, `test/records.test.ts`, `test/tools.test.ts`
 
 **Interfaces:**
+
 - Produces:
   - `geneanet_get_tree`: every node gains `id` and `withheld` (from `hidden`); `dates` becomes `born?`/`died?` `DateValue`s parsed from the node's display `dates` (`"1841-1907"` style: years only → `{iso}`; anything else → `{text}`). Graph resolution (`shapeGraph`) is otherwise unchanged.
   - `geneanet_search_tree`: persons gain `id`; `father`/`mother`/`spouses` become `Brief`s (dates via `fromDisplayEn`).
@@ -181,21 +197,25 @@ Mapping rules: vitals become `events` with `type` birth/baptism/death/burial (da
 ### Task 7: Cache
 
 **Files:**
+
 - Create: `src/cache.ts`
 - Modify: `src/server.ts` (one `PersonCache` per server, passed in `ToolContext`), `src/tools/index.ts` (`ToolContext` gains `cache`), tools that produce persons (`get_person`, `search_records`)
 - Test: `test/cache.test.ts`
 
 **Interfaces:**
+
 - Produces:
+
   ```ts
   class PersonCache {
-    constructor(opts?: { max?: number; ttlMs?: number; now?: () => number }) // 5000, 3_600_000
-    get(id: string): Person | undefined          // resolves aliases
-    put(p: Person): void                         // keyed by p.id; never replaces "full" with "summary"
-    alias(from: string, to: string): void        // key-form id → index-form id
-    canonical(id: string): string                // id after aliases
+    constructor(opts?: { max?: number; ttlMs?: number; now?: () => number }); // 5000, 3_600_000
+    get(id: string): Person | undefined; // resolves aliases
+    put(p: Person): void; // keyed by p.id; never replaces "full" with "summary"
+    alias(from: string, to: string): void; // key-form id → index-form id
+    canonical(id: string): string; // id after aliases
   }
   ```
+
   LRU via `Map` insertion order (delete + set on read). Expired entries are dropped on read.
 
 - [ ] **Step 1: Failing tests:** put/get round-trip; `put(summary)` after `put(full)` keeps full; `put(full)` after `put(summary)` replaces; `alias("geneanet:t:a/b/0","geneanet:t:27")` then `get("geneanet:t:a/b/0")` returns the index-form person and `canonical` returns `"geneanet:t:27"`; over `max` evicts least recently read; past `ttlMs` (injected `now`) returns `undefined`.
@@ -207,11 +227,13 @@ Mapping rules: vitals become `events` with `type` birth/baptism/death/burial (da
 ### Task 8: Fetcher and `geneanet_get_people`
 
 **Files:**
+
 - Create: `src/sources/geneanet/fetch.ts`
 - Modify: `src/tools/trees.ts` (register `geneanet_get_people`; `get_person` reuses the fetcher), `test/tools.test.ts` (`ALL_TOOLS` gains `geneanet_get_people`), `.github/workflows/ci.yml` (expected list)
 - Test: `test/fetch.test.ts`, `test/tools.test.ts`
 
 **Interfaces:**
+
 - Consumes: `PersonCache`, `toPerson`, `parseId`, `GeneanetClient`.
 - Produces:
   ```ts
@@ -234,10 +256,12 @@ Mapping rules: vitals become `events` with `type` birth/baptism/death/burial (da
 ### Task 9: GEDCOM 7.0 writer
 
 **Files:**
+
 - Create: `src/gedcom/write.ts`, `test/fixtures/gedcom/*.ged` (golden files)
 - Test: `test/gedcom.test.ts`
 
 **Interfaces:**
+
 - Produces:
   ```ts
   type ExportInput = { people: Person[]; same: string[][]; anchor?: string };
@@ -246,6 +270,7 @@ Mapping rules: vitals become `events` with `type` birth/baptism/death/burial (da
   ```
 
 Rules (spec "`genealogy_export_gedcom`"), the ones a writer must not guess:
+
 - Header: `0 HEAD` / `1 GEDC` / `2 VERS 7.0` / `1 SOUR mcp-genealogy` / `2 VERS <version>` / `1 DATE <D MON YYYY>` / `1 PLAC` / `2 FORM City, INSEE, Department, Region, Country`. Ends with `0 TRLR`. LF line endings, UTF-8, no BOM.
 - Xrefs: `@I1@…` in output order (anchor first, then input order), `@F1@…`, `@S1@…`.
 - A `same` group → one `INDI`: `NAME` from its first member; every member's events, each keeping its own citations; one `EXID` per member. Two disagreeing births stay two `BIRT`s.
@@ -267,11 +292,13 @@ Rules (spec "`genealogy_export_gedcom`"), the ones a writer must not guess:
 ### Task 10: `genealogy_export_gedcom` and `GENEALOGY_EXPORT_DIR`
 
 **Files:**
+
 - Create: `src/tools/export.ts`
 - Modify: `src/config.ts` (`exportDir`, from `GENEALOGY_EXPORT_DIR`, default `~/Documents/Genealogy Exports`, `~` expanded with `os.homedir()`), `src/tools/index.ts`, `src/tools/status.ts` (report `exportDir`), `test/tools.test.ts` (`ALL_TOOLS` gains `genealogy_export_gedcom`), `.github/workflows/ci.yml`, `.env.example`
 - Test: `test/export.test.ts`
 
 **Interfaces:**
+
 - Consumes: `fetchPeople`, `PersonCache`, `writeGedcom`, `parseId`.
 - Input: `ids: string[]` (1–500), `same?: string[][]` (every id in `same` must also be in `ids`, else `ArgumentError`), `anchor?: string` (must be in `ids`), `detail` (`"summary"` default), `filename?` (`/^[\w .,()-]+\.ged$/`, no path separators).
 - Behaviour: canonicalise every id through the cache (so two forms of one person collapse, _Review Focus 1_); `fetchPeople(…, {max: 40, budgetMs: 45_000})` for the missing ones; if `remaining` or `errors` is non-empty, write nothing and return `{written:false, resolved, remaining, errors}` with a note to call again with the same arguments. Otherwise write `<exportDir>/<filename or default>` (default `<anchor or first person's surname, lower-case, ascii>-<YYYY-MM-DD>.ged`; an existing file gets `-2`, `-3`…), creating the directory. Return `{written:true, path, ...stats, detail, ...(detail==="summary" ? {note:"Summary detail: vital events, occupations and families only."} : {})}`.
@@ -286,6 +313,7 @@ Rules (spec "`genealogy_export_gedcom`"), the ones a writer must not guess:
 ### Task 11: "Same person in other trees" recon (timeboxed), docs, live check
 
 **Files:**
+
 - Modify: `README.md` (rewrite around sources: Geneanet now, matchID and Geni next; the shared schema; ids table; export folder and Filiation; terms of use kept), `proto/README.md` (raw dates, visibility, other-trees finding), `.env.example`, `.studio`-style build note is out of scope
 - Possibly modify: `src/sources/geneanet/proto/messages.ts`, `src/sources/geneanet/adapter.ts`, `src/tools/trees.ts` (only if the recon succeeds)
 

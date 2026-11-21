@@ -1,15 +1,15 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
-import { GeneanetApiError } from "#/client/errors";
-import type { GeneanetClient } from "#/client/geneanet";
+import { GeneanetApiError } from "#/sources/geneanet/errors";
+import type { GeneanetClient } from "#/sources/geneanet/geneanet";
 import {
   RecordsParseError,
   buildRecordsQuery,
   parseRecordsPage,
   type RecordsQuery,
-} from "#/records/search";
-import { wrap } from "#/tools/util";
+} from "#/sources/geneanet/records";
+import { CALL_DEADLINE_MS, wrap } from "#/tools/util";
 
 const nameArg = (what: string, example: string) =>
   z.string().min(1).optional().describe(`${what}, e.g. "${example}".`);
@@ -22,9 +22,13 @@ export const registerRecordsTools = (server: McpServer, client: GeneanetClient):
       description:
         "Search all of Geneanet at once for one individual: every public family tree plus the " +
         "archive indexes (genealogical societies' parish and civil register transcriptions, " +
-        "collaborative indexes, archival registers). Each hit says its kind, name, spouse, " +
-        "dates and places, and where it comes from. family_tree hits carry tree/n/p, which " +
-        "geneanet_get_person and geneanet_get_tree take directly. Archive record details are " +
+        "collaborative indexes, archival registers, cemeteries). Each hit says its kind, name, " +
+        "spouse, dates as [{event, date}] and places, and where it comes from. family_tree hits " +
+        "carry a ref and tree/n/p, which geneanet_get_person and geneanet_get_tree take directly. " +
+        'Hits from the INSEE death index carry hint: "matchid": matchID has their exact dates. ' +
+        "A place's `code` is a commune code as written, postal or INSEE unknown; `insee` appears " +
+        "only on INSEE-index hits. " +
+        'A hit behind the XXXX mask says withheld: "premium". Archive record details are ' +
         "Premium-only on Geneanet, so for other kinds the hit itself is all there is; its url " +
         "opens the record for a human. One request per page. The same person often appears in " +
         "several trees, so read the results before fetching any of them.",
@@ -95,7 +99,7 @@ export const registerRecordsTools = (server: McpServer, client: GeneanetClient):
           ])
           .default(20)
           .describe(
-            "Results per page: 10, 20, 30, 40, 50 or 100. Defaults to 20; a hit is about 60 tokens.",
+            "Results per page: 10, 20, 30, 40, 50 or 100. Defaults to 20; a hit is about 120 tokens.",
           ),
       }),
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -104,7 +108,9 @@ export const registerRecordsTools = (server: McpServer, client: GeneanetClient):
       wrap(async () => {
         const query: RecordsQuery = args;
         const params = buildRecordsQuery(query);
-        const html = await client.searchRecordsPage(params);
+        const html = await client.searchRecordsPage(params, {
+          deadline: client.now() + CALL_DEADLINE_MS,
+        });
         let page;
         try {
           page = parseRecordsPage(html, client.siteBaseUrl, client.treeBaseUrl);

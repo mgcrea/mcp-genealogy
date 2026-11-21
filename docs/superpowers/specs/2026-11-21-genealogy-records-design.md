@@ -40,7 +40,7 @@ search across every source in one call possible. So this server grows from `mcp-
   `filiation_import`), in a window with undo. This server reads untrusted outside data and
   changes nothing. Keeping the two apart is the reason they are two servers.
 - **No place normalisation service.** Turning "Montréal d'Aude" or an INSEE code into a canonical
-  place belongs in Filiation (on edit and on import). This server only *splits* what a source
+  place belongs in Filiation (on edit and on import). This server only _splits_ what a source
   gives it; it does not geocode or look places up.
 - **No parsing of free-text citations.** Tree owners type sources however they like. A parsed
   `{acte, page, register}` would be a guess presented as fact. Structured citation fields are
@@ -87,12 +87,12 @@ search across every source in one call possible. So this server grows from `mcp-
 
 ## Approaches considered
 
-| Approach | Trade-off | Verdict |
-| --- | --- | --- |
-| **One records server, per-source tools plus shared tools** | One schema, one credential profile, cross-source search possible. Each source keeps its own errors and rate gate, so breakage stays local. | **Chosen.** |
-| One server per source (geneanet, matchid, geni, familysearch) | Isolation, but four answer formats, and the agent redoes normalisation and cross-source matching every session, which is the cost the feedback is about. Tool count comes out about the same. | Rejected. |
-| Records + Filiation in one server | One install, but the server that reads untrusted outside data would also write the user's tree. | Rejected: the read/write boundary is worth the second server. |
-| `detail: "full"` on `geneanet_get_tree` instead of a batch tool | Simpler for the agent, but 118 people at 1 req/s is about 2 minutes, past the 60 s timeout. | Rejected unless a real full-graph operation turns up (see recon). |
+| Approach                                                        | Trade-off                                                                                                                                                                                     | Verdict                                                           |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **One records server, per-source tools plus shared tools**      | One schema, one credential profile, cross-source search possible. Each source keeps its own errors and rate gate, so breakage stays local.                                                    | **Chosen.**                                                       |
+| One server per source (geneanet, matchid, geni, familysearch)   | Isolation, but four answer formats, and the agent redoes normalisation and cross-source matching every session, which is the cost the feedback is about. Tool count comes out about the same. | Rejected.                                                         |
+| Records + Filiation in one server                               | One install, but the server that reads untrusted outside data would also write the user's tree.                                                                                               | Rejected: the read/write boundary is worth the second server.     |
+| `detail: "full"` on `geneanet_get_tree` instead of a batch tool | Simpler for the agent, but 118 people at 1 req/s is about 2 minutes, past the 60 s timeout.                                                                                                   | Rejected unless a real full-graph operation turns up (see recon). |
 
 ## Design
 
@@ -136,29 +136,29 @@ type Ref = { source: "geneanet" | "matchid" | "geni" | "familysearch"; id: strin
 // geneanet id: "<tree>:<index>"; matchid id: its `id`; geni: "profile-<n>".
 
 type DateValue = {
-  date?: string;          // ISO, as precise as known: "1897-04-03", "1897-04", "1897"
+  date?: string; // ISO, as precise as known: "1897-04-03", "1897-04", "1897"
   qualifier?: "about" | "maybe" | "before" | "after" | "between" | "or" | "from" | "to";
-  dateTo?: string;        // second bound for between / or / from–to
-  calendar?: "julian" | "french" | "hebrew";   // omitted = gregorian; date stays in that calendar
-  text?: string;          // the source's own wording, only when it could not be parsed
+  dateTo?: string; // second bound for between / or / from–to
+  calendar?: "julian" | "french" | "hebrew"; // omitted = gregorian; date stays in that calendar
+  text?: string; // the source's own wording, only when it could not be parsed
 };
 
 type Place = {
-  name: string;           // as the source wrote the locality, e.g. "Beauvais-sur-Tescou"
-  insee?: string;         // 5 chars: \d{5} or 2[AB]\d{3}
-  department?: string;    // name or code, as given
+  name: string; // as the source wrote the locality, e.g. "Beauvais-sur-Tescou"
+  insee?: string; // 5 chars: \d{5} or 2[AB]\d{3}
+  department?: string; // name or code, as given
   region?: string;
   country?: string;
-  raw?: string;           // full original string when it was split
+  raw?: string; // full original string when it was split
 };
 
 type Citation = {
   source: Ref["source"];
   url?: string;
-  title?: string;         // e.g. "INSEE, fichier des personnes décédées, 1978"
-  text?: string;          // free text, verbatim (tree owners' sources)
-  acte?: string;          // only from structured fields (matchID certificateId)
-  page?: string;          // only from structured fields
+  title?: string; // e.g. "INSEE, fichier des personnes décédées, 1978"
+  text?: string; // free text, verbatim (tree owners' sources)
+  acte?: string; // only from structured fields (matchID certificateId)
+  page?: string; // only from structured fields
 };
 
 type Event = {
@@ -166,23 +166,38 @@ type Event = {
   date?: DateValue;
   place?: Place;
   citations?: Citation[];
-  with?: Brief;           // spouse for marriage
+  with?: Brief; // spouse for marriage
 };
 
-type Brief = { ref: Ref; name: string; born?: string; bornAt?: string; died?: string; diedAt?: string; withheld?: Withheld };
+type Brief = {
+  ref: Ref;
+  name: string;
+  born?: string;
+  bornAt?: string;
+  died?: string;
+  diedAt?: string;
+  withheld?: Withheld;
+};
 
 type Withheld =
-  | "private"               // the source flagged the person hidden
-  | "probably-private"      // inferred: empty record, alive or unknown death status
-  | "premium";              // Geneanet archive detail masked as XXXX
+  | "private" // the source flagged the person hidden
+  | "probably-private" // inferred: empty record, alive or unknown death status
+  | "premium"; // Geneanet archive detail masked as XXXX
 
 type Person = {
   ref: Ref;
-  name: string; given?: string; surname?: string; sex?: "male" | "female";
-  aliases?: string[]; occupation?: string;
+  name: string;
+  given?: string;
+  surname?: string;
+  sex?: "male" | "female";
+  aliases?: string[];
+  occupation?: string;
   events: Event[];
-  parents?: Brief[]; families?: { spouse?: Brief; events: Event[]; children: Brief[] }[];
-  notes?: string; withheld?: Withheld; withheldReason?: string;
+  parents?: Brief[];
+  families?: { spouse?: Brief; events: Event[]; children: Brief[] }[];
+  notes?: string;
+  withheld?: Withheld;
+  withheldReason?: string;
 };
 ```
 

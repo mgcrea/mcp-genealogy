@@ -8,8 +8,17 @@
 // `<a class="ligne-resultat" data-type-fonds="…">` with three column blocks:
 // `content-individu` (name, spouse, relationship, source), `content-periode`
 // (labelled dates) and `content-lieu` (places, each tagged with event icons).
+//
+// Hits answer in the shared schema's pieces (spec: "Geneanet tools"): dates as
+// `{event, date: DateValue}`, places as `Place`, a `ref` on family-tree hits,
+// `hint: "matchid"` on the INSEE death index and `withheld: "premium"` behind
+// the XXXX mask. Other kinds have no ref: nothing here can fetch them.
 
-import { decodeEntities } from "#/client/shape";
+import { geneanetKeyRefId } from "#/schema/ids";
+import type { DateValue, Place, Ref } from "#/schema/types";
+import { fromWording } from "#/sources/geneanet/dates";
+import { splitPlace } from "#/sources/geneanet/places";
+import { decodeEntities } from "#/sources/geneanet/shape";
 
 // ── Query ────────────────────────────────────────────────────────────────────
 
@@ -66,6 +75,7 @@ const KINDS: Record<string, string> = {
   releves_cercles: "society_index",
   releves_collaboratifs: "collaborative_index",
   registres: "archival_register",
+  cimetieres: "cemetery",
 };
 
 export type RecordHit = {
@@ -74,14 +84,21 @@ export type RecordHit = {
   spouse?: string;
   relationship?: string;
   source?: string;
-  dates: string[];
-  places: { place: string; events: string[] }[];
-  url: string;
+  dates: { event: string; date?: DateValue }[];
+  places: { place: Place; events: string[] }[];
+  /** Every hit but a family-tree one, whose url is its ref's. */
+  url?: string;
+  /** Family-tree hits only: the person's ref, in key form until it is fetched. */
+  ref?: Ref;
   /** Family-tree hits only: what geneanet_get_person takes. */
   tree?: string;
   n?: string;
   p?: string;
   oc?: number;
+  /** The INSEE death index: exact dates are one matchid_search away. */
+  hint?: "matchid";
+  /** The name or a date is behind Geneanet's Premium mask. */
+  withheld?: "premium";
 };
 
 export type RecordsPage = { total: number; hits: RecordHit[] };
@@ -127,6 +144,16 @@ const treeRef = (url: string, treeHost: string): Pick<RecordHit, "tree" | "n" | 
   }
 };
 
+/**
+ * The INSEE death index as the site shows it (seen 2026-11-21): the source line "Archives :
+ * Fichier des décès de l'INSEE", on rows published by the society colgnecminsee.
+ */
+const isInseeIndex = (source: string | undefined, url: string): boolean =>
+  /\bd[ée]c[èe]s de l['’]INSEE\b/i.test(source ?? "") ||
+  /\/cercles\/view\/colgnecminsee\//.test(url);
+
+const PREMIUM_MASK = /XXXX/;
+
 const parseHit = (anchor: string, siteBaseUrl: string, treeHost: string): RecordHit => {
   const href = decodeEntities(anchor.match(/\bhref="([^"]*)"/)?.[1] ?? "");
   const url = new URL(href, siteBaseUrl).toString();
@@ -134,46 +161,74 @@ const parseHit = (anchor: string, siteBaseUrl: string, treeHost: string): Record
 
   const individu = paragraphs(block(anchor, "content-individu"));
   const [nameHtml = "", ...rest] = individu;
-  const hit: RecordHit = {
-    kind: KINDS[type] ?? type,
-    name: text(nameHtml),
-    // A range wraps onto a second <p> ("Marriage (between 1825" / "and 1875)"):
-    // a line starting in lower case continues the one before it.
-    dates: paragraphs(block(anchor, "content-periode"))
-      .map(text)
-      .filter(Boolean)
-      .reduce<string[]>((lines, line) => {
-        const last = lines.length - 1;
-        if (last >= 0 && /^[a-z)]/.test(line)) lines[last] = `${lines[last]} ${line}`;
-        else lines.push(line);
-        return lines;
-      }, []),
-    places: [...block(anchor, "content-lieu").matchAll(/<p[^>]*ligne-lieu[^>]*>([\s\S]*?)<\/p>/g)]
-      .map((m) => ({
-        place: text(m[1]?.match(/title-lieu[^>]*>([\s\S]*?)<\/span>/)?.[1] ?? ""),
-        events: [...(m[1] ?? "").matchAll(/\btitle="([^"]+)"/g)].map((t) =>
-          decodeEntities(t[1] ?? "").toLowerCase(),
-        ),
-      }))
-      .filter((p) => p.place),
-    url,
-    ...treeRef(url, treeHost),
-  };
+  // A range wraps onto a second <p> ("Marriage (between 1825" / "and 1875)"):
+  // a line starting in lower case continues the one before it.
+  const dateLines = paragraphs(block(anchor, "content-periode"))
+    .map(text)
+    .filter(Boolean)
+    .reduce<string[]>((lines, line) => {
+      const last = lines.length - 1;
+      if (last >= 0 && /^[a-z)]/.test(line)) lines[last] = `${lines[last]} ${line}`;
+      else lines.push(line);
+      return lines;
+    }, []);
+  let spouse: string | undefined;
+  let relationship: string | undefined;
+  let source: string | undefined;
   for (const para of rest) {
     const line = text(para);
     const labelled = line.match(/^([^:]{1,40}?)\s*:\s*(.+)$/);
     if (labelled) {
       const [, label = "", value = ""] = labelled;
       const key = label.toLowerCase();
-      if (key === "spouse") hit.spouse = value;
-      else if (key === "relationship") hit.relationship = value.toLowerCase();
-      else if (key === "archives") hit.source = value;
-      else hit.source = hit.source ? `${hit.source}; ${line}` : line;
+      if (key === "spouse") spouse = value;
+      else if (key === "relationship") relationship = value.toLowerCase();
+      else if (key === "archives") source = value;
+      else source = source ? `${source}; ${line}` : line;
     } else if (line) {
-      hit.source = hit.source ? `${hit.source}; ${line}` : line;
+      source = source ? `${source}; ${line}` : line;
     }
   }
-  return hit;
+  const insee = isInseeIndex(source, url);
+  const tree = treeRef(url, treeHost);
+  // A family-tree hit's url is its ref's; other hits keep theirs.
+  const where: Pick<RecordHit, "url" | "ref"> =
+    tree.tree && tree.n && tree.p
+      ? {
+          ref: {
+            source: "geneanet",
+            id: geneanetKeyRefId(tree.tree, { n: tree.n, p: tree.p, oc: tree.oc ?? 0 }),
+            url,
+          },
+        }
+      : { url };
+  const name = text(nameHtml);
+  const premium = PREMIUM_MASK.test(name) || dateLines.some((l) => PREMIUM_MASK.test(l));
+
+  return {
+    kind: KINDS[type] ?? type,
+    name,
+    ...(spouse ? { spouse } : {}),
+    ...(relationship ? { relationship } : {}),
+    ...(source ? { source } : {}),
+    dates: dateLines.map(fromWording),
+    places: [
+      ...block(anchor, "content-lieu").matchAll(/<p[^>]*ligne-lieu[^>]*>([\s\S]*?)<\/p>/g),
+    ].flatMap((m) => {
+      // Only the INSEE index is known to write INSEE codes; trees write postal codes there too.
+      const place = splitPlace(text(m[1]?.match(/title-lieu[^>]*>([\s\S]*?)<\/span>/)?.[1] ?? ""), {
+        inseeCode: insee,
+      });
+      const events = [...(m[1] ?? "").matchAll(/\btitle="([^"]+)"/g)].map((t) =>
+        decodeEntities(t[1] ?? "").toLowerCase(),
+      );
+      return place ? [{ place, events }] : [];
+    }),
+    ...where,
+    ...tree,
+    ...(insee ? { hint: "matchid" as const } : {}),
+    ...(premium ? { withheld: "premium" as const } : {}),
+  };
 };
 
 export class RecordsParseError extends Error {

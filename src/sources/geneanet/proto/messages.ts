@@ -2,9 +2,9 @@
 // use. Field numbers are Geneanet's (see proto/README.md for where they differ
 // from upstream GeneWeb), checked against the real responses in
 // test/fixtures/*.bin. Decoders return every field the tools might show; the
-// shaping layer (client/shape.ts) decides what reaches the model.
+// shaping layer (sources/geneanet/shape.ts) decides what reaches the model.
 
-import { ProtoMessage, ProtoWriter } from "#/proto/wire";
+import { ProtoMessage, ProtoWriter } from "#/sources/geneanet/proto/wire";
 
 export type Sex = "male" | "female" | "unknown";
 
@@ -83,7 +83,10 @@ export type SimplePerson = {
   deathDateRaw?: string;
   deathPlace?: string;
   sosa?: string;
+  /** Shown as "x x" (field 23 or 24). */
   hidden: boolean;
+  /** Name shown, details withheld from visitors (field 22; set for "x x" people too). */
+  restricted: boolean;
 };
 
 const opt = <K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } =>
@@ -103,6 +106,7 @@ export const decodeSimplePerson = (m: ProtoMessage): SimplePerson => ({
   ...opt("deathDateRaw", m.string(16)),
   ...opt("sosa", m.string(17)),
   hidden: m.bool(23) === true || m.bool(24) === true,
+  restricted: m.bool(22) === true,
 });
 
 // ── person ───────────────────────────────────────────────────────────────────
@@ -148,6 +152,7 @@ export type Family = {
   marriageType: number;
   divorceType: number;
   divorceDate?: string;
+  divorceDateRaw?: string;
   notes?: string;
   sources?: string;
   children: SimplePerson[];
@@ -162,6 +167,7 @@ const decodeFamily = (m: ProtoMessage): Family => ({
   marriageType: m.int(9) ?? 0,
   divorceType: m.int(10) ?? 0,
   ...opt("divorceDate", m.string(11)),
+  ...opt("divorceDateRaw", m.string(20)),
   ...opt("notes", m.string(16)),
   ...opt("sources", m.string(17)),
   ...opt("marriageDateRaw", m.string(19)),
@@ -194,6 +200,10 @@ export type Person = {
   events: Event[];
   eventsTotal: number;
   sosa: number;
+  /** Shown to visitors as "x x" with nothing else (field 51; 52 by analogy with SimplePerson 24). */
+  hidden: boolean;
+  /** Name shown, details withheld from visitors (field 50). See proto/README.md. */
+  restricted: boolean;
 };
 
 const place = (
@@ -234,6 +244,8 @@ export const decodePerson = (m: ProtoMessage): Person => {
     events: events ? events.messages(1).map(decodeEvent) : [],
     eventsTotal: events?.int(3) ?? 0,
     sosa: m.int(46) ?? 2,
+    hidden: m.bool(51) === true || m.bool(52) === true,
+    restricted: m.bool(50) === true,
   };
 };
 
