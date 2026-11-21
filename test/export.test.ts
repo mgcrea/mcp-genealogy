@@ -11,6 +11,7 @@ import { basename, join } from "node:path";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { BUILD_INFO } from "#/build-info";
 import { loadConfig } from "#/config";
 import {
   binResponse,
@@ -74,7 +75,7 @@ describe("genealogy_export_gedcom", () => {
     expect(basename(file)).toMatch(/^\d{4}-\d{2}-\d{2}-louvignes\.ged$/);
     const text = readFileSync(file, "utf8");
     expect(text.startsWith("0 HEAD\n")).toBe(true);
-    expect(text).toContain("2 VERS 0.1.0");
+    expect(text).toContain(`2 VERS ${BUILD_INFO.version}`);
     expect(JSON.stringify(res)).not.toContain("0 HEAD");
     expect(sidecar(file).refs).toEqual([ref("maudrenel1:27")]);
   });
