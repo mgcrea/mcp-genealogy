@@ -14,7 +14,8 @@ import type { Brief, Citation, DateValue, Event, Person, Ref } from "#/schema/ty
 //   where its tag allows it, and left out (and reported) where it does not.
 // - Withheld people keep their name, ids, family links and a NOTE saying why; nothing else. A
 //   masked one ("x x", no given name or surname) has no name to keep, so no NAME line.
-// - Links to people not included are warned about, except to an unknown "?" partner or parent.
+// - Links to people not included are warned about, except to an unknown "?" partner or parent:
+//   one count per relation for the whole file, and one per event type for left-out events.
 
 export type GedcomMeta = { date: string /* YYYY-MM-DD */; version: string };
 
@@ -258,6 +259,16 @@ const nameOf = (p: Person): string | undefined => {
 
 // ── writer ───────────────────────────────────────────────────────────────────
 
+/** "24 child, 11 spouse, 2 parent": how many of each, most first, ties in the order met. */
+const countsOf = (kinds: string[]): string => {
+  const counts = new Map<string, number>();
+  for (const k of kinds) counts.set(k, (counts.get(k) ?? 0) + 1);
+  return [...counts]
+    .toSorted((a, b) => b[1] - a[1])
+    .map(([k, n]) => `${n} ${k}`)
+    .join(", ");
+};
+
 export const writeGedcom = (input: { people: Person[] }, meta: GedcomMeta): GedcomResult => {
   // People: one per ref key, first occurrence wins.
   const people = new Map<string, { person: Person; xref: string }>();
@@ -275,14 +286,14 @@ export const writeGedcom = (input: { people: Person[] }, meta: GedcomMeta): Gedc
     if (b.sex && !sexes.has(key)) sexes.set(key, b.sex);
   };
 
-  // Links to people not included, per person: ref key → label, in order.
+  // Links to people not included, per person: ref key → relation, in order.
   const skipped = new Map<string, Map<string, string>>();
   const skip = (from: string, to: Brief, relation: string): void => {
     const key = refKey(to.ref);
     // A "? ?" partner or parent (named "?") is nobody: there is no one to have left out.
     if (included(key) || to.name === "?") return;
     const links = skipped.get(from) ?? new Map<string, string>();
-    if (!links.has(key)) links.set(key, `${relation} ${to.name}`);
+    if (!links.has(key)) links.set(key, relation);
     skipped.set(from, links);
   };
 
@@ -482,23 +493,22 @@ export const writeGedcom = (input: { people: Person[] }, meta: GedcomMeta): Gedc
   }
   out.raw(0, "TRLR");
 
-  const warnings = [...people].flatMap(([key, { person }]) => {
-    const who = `${person.name} (${key})`;
-    const links = [...(skipped.get(key)?.values() ?? [])];
-    const empty = emptyEvents.get(key) ?? [];
-    return [
-      ...(links.length > 0
-        ? [
-            `${who}: ${links.length === 1 ? "1 link to a person" : `${links.length} links to people`} not in the export left out: ${links.join(", ")}.`,
-          ]
-        : []),
-      ...(empty.length > 0
-        ? [
-            `${who}: ${empty.length === 1 ? "1 event" : `${empty.length} events`} with no date, place, note or source left out: ${empty.join(", ")}.`,
-          ]
-        : []),
-    ];
-  });
+  // One line per kind for the whole file: a pedigree leaves out every sibling and in-law on
+  // purpose, and a line per person would bury the warnings that matter.
+  const links = [...skipped.values()].flatMap((byRef) => [...byRef.values()]);
+  const empty = [...emptyEvents.values()].flat();
+  const warnings = [
+    ...(links.length > 0
+      ? [
+          `${links.length === 1 ? "1 link to a person" : `${links.length} links to people`} not in the export left out: ${countsOf(links)}.`,
+        ]
+      : []),
+    ...(empty.length > 0
+      ? [
+          `${empty.length === 1 ? "1 event" : `${empty.length} events`} with no date, place, note or source left out: ${countsOf(empty)}.`,
+        ]
+      : []),
+  ];
 
   return {
     text: `${out.list.join("\n")}\n`,

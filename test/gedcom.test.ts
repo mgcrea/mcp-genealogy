@@ -92,7 +92,7 @@ describe("writeGedcom goldens", () => {
     expectNoDanglingPointer(out.text);
     // Her husband and three children are not in the export: one aggregate line.
     expect(out.warnings).toEqual([
-      "Marie Germaine LOUVIGNES (geneanet:maudrenel1:27): 4 links to people not in the export left out: spouse Jean ROBERT, child Moïse Fernand ROBERT, child Pierre Jean ROBERT, child Madeleine Elise ROBERT.",
+      "4 links to people not in the export left out: 3 child, 1 spouse.",
     ]);
   });
 
@@ -191,9 +191,7 @@ describe("writeGedcom families", () => {
 
     const out = write([child, father]);
     expect(record(out.text, "0 @F1@ FAM")).toEqual(["0 @F1@ FAM", "1 HUSB @I2@", "1 CHIL @I1@"]);
-    expect(out.warnings).toEqual([
-      "Child (geneanet:t:3): 1 link to a person not in the export left out: parent Mother.",
-    ]);
+    expect(out.warnings).toEqual(["1 link to a person not in the export left out: 1 parent."]);
     expectNoDanglingPointer(out.text);
   });
 
@@ -229,9 +227,7 @@ describe("writeGedcom families", () => {
     ]);
     expect(record(out.text, "0 @I1@ INDI")).toContain("1 FAMS @F1@");
     expectNoDanglingPointer(out.text);
-    expect(out.warnings).toEqual([
-      "Person 1 (geneanet:t:1): 2 links to people not in the export left out: spouse Husband, spouse Other.",
-    ]);
+    expect(out.warnings).toEqual(["2 links to people not in the export left out: 2 spouse."]);
   });
 
   it("writes a marriage with no detail as MARR Y", () => {
@@ -373,7 +369,25 @@ describe("writeGedcom people", () => {
       }),
     ]);
     expect(out.warnings).toEqual([
-      "Person 1 (geneanet:t:1): 2 links to people not in the export left out: parent Mother, child Person 5.",
+      "2 links to people not in the export left out: 1 parent, 1 child.",
+    ]);
+  });
+
+  it("counts what it left out across people, one line per kind, most first", () => {
+    const out = write([
+      person(1, {
+        parents: [brief(person(3, { name: "Mother" }))],
+        families: [{ spouse: brief(person(4)), events: [], children: [brief(person(5))] }],
+        events: [{ type: "residence" }],
+      }),
+      person(2, {
+        families: [{ spouse: brief(person(6)), events: [], children: [brief(person(7))] }],
+        events: [{ type: "residence" }, { type: "occupation" }],
+      }),
+    ]);
+    expect(out.warnings).toEqual([
+      "5 links to people not in the export left out: 2 spouse, 2 child, 1 parent.",
+      "3 events with no date, place, note or source left out: 2 residence, 1 occupation.",
     ]);
   });
 
@@ -426,7 +440,7 @@ describe("writeGedcom people", () => {
       "2 TYPE https://gw.geneanet.org/t",
     ]);
     expect(out.warnings).toEqual([
-      "Person 1 (geneanet:t:1): 2 events with no date, place, note or source left out: residence, recensement.",
+      "2 events with no date, place, note or source left out: 1 residence, 1 recensement.",
     ]);
   });
 
@@ -453,7 +467,7 @@ describe("writeGedcom people", () => {
       "1 OCCU cultivateur",
     ]);
     expect(out.warnings).toEqual([
-      "Person 1 (geneanet:t:1): 1 event with no date, place, note or source left out: occupation.",
+      "1 event with no date, place, note or source left out: 1 occupation.",
     ]);
   });
 

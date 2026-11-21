@@ -167,7 +167,8 @@ printf '%s\n' \
    Lisle-sur-Tarn and died 1870-01-09 in Cahuzac-sur-Vère.
 4. `genealogy_export_gedcom { people: [{source: "geneanet", id: "maudrenel1:27"}, …] }` writes
    `2026-11-21-louvignes.ged` with 5 people and 3 families without another request, and warns
-   about the links it left out (her husband, and the parents of Honorine, Guilhaume and Antoinette).
+   with a count of the links it left out by relation (her husband, and the parents of Honorine,
+   Guilhaume and Antoinette).
 
 ## How it reaches Geneanet
 
